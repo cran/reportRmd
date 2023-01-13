@@ -237,8 +237,14 @@ crrRx<-function(f,data){
 #' @param all.stats boolean indicating if all summary statistics (Q1,Q3 +
 #'   min,max on a separate line) should be displayed. Overrides IQR.
 #' @param pvalue boolean indicating if you want p-values included in the table
+#' @param effSize boolean indicating if you want effect sizes included in the
+#'   table. Can only be obtained if pvalue is also requested. Effect sizes are
+#'   calculated with the rstatix package using Cramer V for categorical and Eta
+#'   Squared for continuous covariates.
 #' @param show.tests boolean indicating if the type of statistical used should
 #'   be shown in a column beside the pvalues. Ignored if pvalue=FALSE.
+#' @param dropLevels logical, indicating if empty factor levels be dropped from
+#'   the output, default is TRUE.
 #' @param excludeLevels a named list of covariate levels to exclude from
 #'   statistical tests in the form list(varname =c('level1','level2')). These
 #'   levels will be excluded from association tests, but not the table. This can
@@ -258,304 +264,455 @@ crrRx<-function(f,data){
 #'   \emph{column} (default) or \emph{row}
 #' @keywords dataframe
 #' @importFrom stats lm sd
+#' @importFrom rstatix cramer_v eta_squared
 #' @seealso \code{\link{fisher.test}},\code{\link{chisq.test}},
 #'   \code{\link{wilcox.test}},\code{\link{kruskal.test}},and
 #'   \code{\link{anova}}
-covsum <- function(data,covs,maincov=NULL,digits=1,numobs=NULL,markup=TRUE,sanitize=TRUE,nicenames=TRUE,IQR = FALSE,all.stats=FALSE,pvalue=TRUE,show.tests=FALSE,excludeLevels=NULL,full=TRUE,
-                   digits.cat = 0,testcont = c('rank-sum test','ANOVA'),testcat = c('Chi-squared','Fisher'),include_missing=FALSE,percentage=c('column','row'))
+covsum <- function (data, covs, maincov = NULL, digits = 1, numobs = NULL,
+                    markup = TRUE, sanitize = TRUE, nicenames = TRUE, IQR = FALSE,
+                    all.stats = FALSE, pvalue = TRUE, effSize = FALSE, show.tests = FALSE, dropLevels = TRUE,
+                    excludeLevels = NULL, full = TRUE, digits.cat = 0, testcont = c("rank-sum test",
+                                                                                    "ANOVA"), testcat = c("Chi-squared", "Fisher"), include_missing = FALSE,
+                    percentage = c("column", "row"))
 {
-  if (missing(data)) stop('data is a required argument')
-  if (missing(covs)) stop('covs is a required argument')
-  if (!inherits(data,'data.frame')) stop('data must be supplied as a data frame.')
-  if (!inherits(covs,'character')) stop('covs must be supplied as a character vector or string indicating variables in data')
-  if (!is.null(maincov)){
-    if (!inherits(maincov,'character')|length(maincov)>1) stop('maincov must be supplied as a string indicating a variable in data')
+  if (missing(data))
+    stop("data is a required argument")
+  if (missing(covs))
+    stop("covs is a required argument")
+  if (!pvalue & effSize)
+    stop("effSize can only be specified when pvalue = TRUE")
+  if (!inherits(data, "data.frame"))
+    stop("data must be supplied as a data frame.")
+  if (!inherits(covs, "character"))
+    stop("covs must be supplied as a character vector or string indicating variables in data")
+  if (!is.null(maincov)) {
+    if (!inherits(maincov, "character") | length(maincov) >
+        1)
+      stop("maincov must be supplied as a string indicating a variable in data")
   }
-  missing_vars = setdiff(c(maincov,covs),names(data))
-  if (length(missing_vars)>0){  stop(paste('These covariates are not in the data:',paste0(missing_vars,collapse=csep())))}
-  for (v in c(maincov,covs)) {
-    if (inherits(data[[v]],'logical')) data[[v]] <- factor(data[[v]])
-    if (inherits(data[[v]],'character')) data[[v]] <- factor(data[[v]])
-    if (inherits(data[[v]],c('Date','POSIXt'))) {
-      covs <- setdiff(covs,v)
-      message(paste('Dates can not be summarised in this version of reportRmd.\n The variable',v,'does not appear in the table.'))
+  missing_vars = setdiff(c(maincov, covs), names(data))
+  if (length(missing_vars) > 0) {
+    stop(paste("These covariates are not in the data:", paste0(missing_vars,
+                                                               collapse = csep())))
+  }
+  for (v in c(maincov, covs)) {
+    if (inherits(data[[v]], "logical"))
+      data[[v]] <- factor(data[[v]])
+    if (inherits(data[[v]], "character"))
+      data[[v]] <- factor(data[[v]])
+    if (inherits(data[[v]], c("Date", "POSIXt"))) {
+      covs <- setdiff(covs, v)
+      message(paste("Dates can not be summarised in this version of reportRmd.\n The variable",
+                    v, "does not appear in the table."))
     }
   }
-  if (!all(names(data[,c(maincov,covs)])==names(data.frame(data[,c(maincov,covs)])))) warning('Non-standard variable names may cause problems. Check output.' )
-
+  if (!all(names(data[, c(maincov, covs)]) == names(data.frame(data[,
+                                                                    c(maincov, covs)]))))
+    warning("Non-standard variable names may cause problems. Check output.")
   missing_testcat <- missing(testcat)
   testcont <- match.arg(testcont)
   testcat <- match.arg(testcat)
   percentage <- match.arg(percentage)
-
-
   if (!pvalue) {
-    show.tests<- FALSE
-    excludeLevels<- NULL
+    show.tests <- FALSE
+    excludeLevels <- NULL
   }
-  if(!markup){
-    lbld<-identity
-    addspace<-identity
-    lpvalue<-identity
+  if (!markup) {
+    lbld <- identity
+    addspace <- identity
+    lpvalue <- identity
   }
   digits <- as.integer(digits)
   digits.cat <- as.integer(digits.cat)
-  if( digits<0 ) stop("parameter 'digits' cannot be negative!")
-  if( digits.cat<0 ) stop("parameter 'digits.cat' cannot be negative!")
-  if(!sanitize) sanitizestr<-identity
-  if(!nicenames) nicename<-identity
-  if(!is.null(maincov)){
-
-    ##JW Removes missing of maincov
-    if(include_missing==FALSE)  data <- data[!is.na(data[[maincov]]),]
-
-    #JW May 2021 keeps the NAs (all instances of useNA = 'ifany' have been added)
-    levels <- names(table(data[[maincov]],useNA = 'ifany'))
-    levels<-c(list(levels),as.list(levels))
-  }else{
-    full = TRUE # don't allow users to specify full = FALSE when there is no main covariate
-    levels<-"NOMAINCOVNULLNA"
-  }
-  N=nrow(data)
-  if(!is.null(maincov)){
-    nmaincov<-c(sum(table(data[[maincov]],useNA = 'ifany')),table(data[[maincov]],useNA = 'ifany'))
-  }else{
-    nmaincov<-N
-    p<-NULL
-  }
-  out<-lapply(covs,function(cov){
-    ismiss=F
-    n<-sum(table(data[[cov]]))
-
-    # Exclude specified levels
-    if (!is.null(excludeLevels[[cov]])){
-      excludeLevel = excludeLevels[[cov]]
-    } else excludeLevel = ''
-
-    # Set up the first column
-    factornames<-NULL
-    if(is.null(numobs[[cov]]))  numobs[[cov]]<-nmaincov
-    if(numobs[[cov]][1]-n>0) {ismiss=T
-    factornames<-c(factornames,"Missing")
+  if (digits < 0)
+    stop("parameter 'digits' cannot be negative!")
+  if (digits.cat < 0)
+    stop("parameter 'digits.cat' cannot be negative!")
+  if (!sanitize)
+    sanitizestr <- identity
+  if (!nicenames)
+    nicename <- identity
+  if (dropLevels)
+    data <- droplevels(data)
+  if (!is.null(maincov)) {
+    if (include_missing == FALSE)
+      data <- data[!is.na(data[[maincov]]), ]
+    levels <- names(table(data[[maincov]], useNA = "ifany"))
+    levels <- c(list(levels), as.list(levels))
+    if (length(na.omit(unique(data[[maincov]]))) == 1) {
+      warning(paste("Only one value of the main covariate exists, show data for maincov =",
+                    na.omit(unique(data[[maincov]]))))
+      maincov <- NULL
+      full = TRUE
+      levels <- "NOMAINCOVNULLNA"
     }
-    #if the covariate is a factor
-    if(is.factor(data[[cov]])){
-      factornames<-c(levels(data[[cov]]),factornames)
+  }
+  else {
+    full = TRUE
+    levels <- "NOMAINCOVNULLNA"
+  }
+  N = nrow(data)
+  if (!is.null(maincov)) {
+    nmaincov <- c(sum(table(data[[maincov]], useNA = "ifany")),
+                  table(data[[maincov]], useNA = "ifany"))
+  }
+  else {
+    nmaincov <- N
+    p <- NULL
+  }
+  out <- lapply(covs, function(cov) {
+    ismiss = F
+    n <- sum(table(data[[cov]]))
+    if (!is.null(excludeLevels[[cov]])) {
+      excludeLevel = excludeLevels[[cov]]
+    }
+    else excludeLevel = ""
+    factornames <- NULL
+    if (is.null(numobs[[cov]]))
+      numobs[[cov]] <- nmaincov
+    if (numobs[[cov]][1] - n > 0) {
+      ismiss = T
+      factornames <- c(factornames, "Missing")
+    }
+    if (is.factor(data[[cov]])) {
+      factornames <- c(levels(data[[cov]]), factornames)
       if (!is.null(maincov)) {
-        if(pvalue){
-          pdata = data[!(data[[cov]] %in% excludeLevel),]
-          # Check for low counts
-          lowcounts <- sum(table(pdata[[maincov]], pdata[[cov]],exclude = excludeLevel)<5)>0
-          # If testcat is specified as ChiSquare and low counts are present issue warning
-          if (!missing_testcat & testcat=='Chi-squared' & lowcounts) warning(paste('Low counts are present in',cov,'variable consider Fisher\'s test.'),call. = F)
-          if ((missing_testcat & lowcounts)|testcat=='Fisher'){
-            p_type <- 'Fisher Exact'
-            p <- try(stats::fisher.test(pdata[[maincov]], pdata[[cov]])$p.value,silent=TRUE)
-            if (is.error(p)){
-              message('Using MC sim. Use set.seed() prior to function for reproducible results.')
-              p <- try(stats::fisher.test(pdata[[maincov]], pdata[[cov]],simulate.p.value =  T)$p.value,silent=TRUE)
-              p_type <- 'MC sim'
+        if (pvalue) {
+          pdata = data[!(data[[cov]] %in% excludeLevel),
+          ]
+          lowcounts <- sum(table(pdata[[maincov]], pdata[[cov]],
+                                 exclude = excludeLevel) < 5) > 0
+          if (!missing_testcat & testcat == "Chi-squared" &
+              lowcounts)
+            warning(paste("Low counts are present in",
+                          cov, "variable consider Fisher's test."),
+                    call. = F)
+          if ((missing_testcat & lowcounts) | testcat ==
+              "Fisher") {
+            p_type <- "Fisher Exact"
+            p <- try(stats::fisher.test(pdata[[maincov]],
+                                        pdata[[cov]])$p.value, silent = TRUE)
+            if (effSize) {
+              e_type <- "Cramer"
+              e <- try(rstatix::cramer_v(table(pdata[[cov]], pdata[[maincov]])), silent = TRUE)
             }
-          } else {
-            p_type = 'Chi Sq'
-            p = try(stats::chisq.test(pdata[[maincov]], pdata[[cov]])$p.value,silent=TRUE)
+            if (is.error(p)) {
+              message("Using MC sim. Use set.seed() prior to function for reproducible results.")
+              p <- try(stats::fisher.test(pdata[[maincov]],
+                                          pdata[[cov]], simulate.p.value = T)$p.value,
+                       silent = TRUE)
+              p_type <- "MC sim"
+              if (effSize) {
+                e_type <- "Cramer"
+                e <- try(rstatix::cramer_v(table(pdata[[cov]], pdata[[maincov]])), silent = TRUE)
+              }
+            }
           }
-          if (is.error(p)) p <- NA
+          else {
+            p_type = "Chi Sq"
+            p = try(stats::chisq.test(pdata[[maincov]],
+                                      pdata[[cov]])$p.value, silent = TRUE)
+            if (effSize) {
+              e_type <- "Cramer"
+              e <- try(rstatix::cramer_v(table(pdata[[cov]], pdata[[maincov]])), silent = TRUE)
+            }
+          }
+          if (is.error(p))
+            p <- NA
           p <- lpvalue(p)
+          if (effSize) {
+            if (is.error(e))
+              e <- NA
+            e <- lpvalue(e)
+          }
         }
       }
-      #set up the main columns
-      if (percentage == "column")   {
-        onetbl<-mapply(function(sublevel,N){
-          missing<-NULL
-          if(is.na(sublevel[1])| sublevel[1]!="NOMAINCOVNULLNA"){
-            subdata<-subset(data,subset=data[[maincov]]%in%sublevel)
-          }else{
-            subdata<-data
+      if (percentage == "column") {
+        onetbl <- mapply(function(sublevel, N) {
+          missing <- NULL
+          if (is.na(sublevel[1]) | sublevel[1] != "NOMAINCOVNULLNA") {
+            subdata <- subset(data, subset = data[[maincov]] %in%
+                                sublevel)
           }
-          table<-table(subdata[[cov]])
-          tbl<-table(subdata[[cov]])
-          n<-sum(tbl)
-          prop <- round(tbl/n,2+digits.cat)*100
-          prop <- sapply(prop,function(x){if(!is.nan(x)){x} else{0}})
-          prop.fmt <- sprintf(paste0("%.",digits.cat,"f"),prop)
-          tbl<-mapply(function(num,prop){paste(num," (",prop,")",sep="")},tbl,prop.fmt)
-          if(ismiss) missing<-N-n
-          tbl<-c(tbl,lbld(missing))
+          else {
+            subdata <- data
+          }
+          table <- table(subdata[[cov]])
+          tbl <- table(subdata[[cov]])
+          n <- sum(tbl)
+          prop <- round(tbl/n, 2 + digits.cat) * 100
+          prop <- sapply(prop, function(x) {
+            if (!is.nan(x)) {
+              x
+            }
+            else {
+              0
+            }
+          })
+          prop.fmt <- sprintf(paste0("%.", digits.cat,
+                                     "f"), prop)
+          tbl <- mapply(function(num, prop) {
+            paste(num, " (", prop, ")", sep = "")
+          }, tbl, prop.fmt)
+          if (ismiss)
+            missing <- N - n
+          tbl <- c(tbl, lbld(missing))
           return(tbl)
-        },levels,numobs[[cov]])
+        }, levels, numobs[[cov]])
       }
-
-      if(percentage=='row') {
-        onetbl<-mapply(function(sublevel,N){
-          missing<-NULL
-          if(is.na(sublevel[1])| sublevel[1]!="NOMAINCOVNULLNA"){
-            subdata<-subset(data,subset=data[[maincov]]%in%sublevel)
-          }else{
-            subdata<-data
+      if (percentage == "row") {
+        onetbl <- mapply(function(sublevel, N) {
+          missing <- NULL
+          if (is.na(sublevel[1]) | sublevel[1] != "NOMAINCOVNULLNA") {
+            subdata <- subset(data, subset = data[[maincov]] %in%
+                                sublevel)
           }
-          table<-table(subdata[[cov]])
-          tbl<-table(subdata[[cov]])
-          n<-sum(tbl)
-          if(ismiss) missing<-N-n
-          tbl<-c(tbl,lbld(missing))
+          else {
+            subdata <- data
+          }
+          table <- table(subdata[[cov]])
+          tbl <- table(subdata[[cov]])
+          n <- sum(tbl)
+          if (ismiss)
+            missing <- N - n
+          tbl <- c(tbl, lbld(missing))
           return(tbl)
-        },levels,numobs[[cov]])
-
-        if(ismiss){
-          #More than two rows with missing
-          if(dim(onetbl)[1]>2){
-            onetbl[-nrow(onetbl),-1] <- t(apply(onetbl[-nrow(onetbl),-1],1,function(x){
-              x <- as.numeric(x)
-              prop <- round(x/sum(x),2+digits.cat)*100
-
-              prop.fmt <- sprintf(paste0("%.",digits.cat,"f"),prop)
-              return(paste(x," (",prop.fmt,")",sep=""))
-            }))
-          }else{
-            #Only one row with missing
-            onetbl[-nrow(onetbl),-1] <- (function(x){
-              x <- as.numeric(x)
-              prop <- round(x/sum(x),2+digits.cat)*100
-
-              prop.fmt <- sprintf(paste0("%.",digits.cat,"f"),prop)
-              return(paste(x," (",prop.fmt,")",sep=""))
-            })( onetbl[-nrow(onetbl),-1])
+        }, levels, numobs[[cov]])
+        if (ismiss) {
+          if (dim(onetbl)[1] > 2) {
+            onetbl[-nrow(onetbl), -1] <- t(apply(onetbl[-nrow(onetbl),
+                                                        -1], 1, function(x) {
+                                                          x <- as.numeric(x)
+                                                          prop <- round(x/sum(x), 2 + digits.cat) *
+                                                            100
+                                                          prop.fmt <- sprintf(paste0("%.", digits.cat,
+                                                                                     "f"), prop)
+                                                          return(paste(x, " (", prop.fmt, ")", sep = ""))
+                                                        }))
           }
-
-
-        }else{
-          #multiple rows and no missing
-          if(!is.null(dim(onetbl))){
-            onetbl[,-1] <- t(apply( onetbl[,-1],1,function(x){
+          else {
+            onetbl[-nrow(onetbl), -1] <- (function(x) {
               x <- as.numeric(x)
-              prop <- round(x/sum(x),2+digits.cat)*100
-
-              prop.fmt <- sprintf(paste0("%.",digits.cat,"f"),prop)
-              return(paste(x," (",prop.fmt,")",sep=""))
-            }))
-          }else{
-            #one row and no missing
-            onetbl[-1] <- (function(x){
+              prop <- round(x/sum(x), 2 + digits.cat) *
+                100
+              prop.fmt <- sprintf(paste0("%.", digits.cat,
+                                         "f"), prop)
+              return(paste(x, " (", prop.fmt, ")", sep = ""))
+            })(onetbl[-nrow(onetbl), -1])
+          }
+        }
+        else {
+          if (!is.null(dim(onetbl))) {
+            onetbl[, -1] <- t(apply(onetbl[, -1], 1,
+                                    function(x) {
+                                      x <- as.numeric(x)
+                                      prop <- round(x/sum(x), 2 + digits.cat) *
+                                        100
+                                      prop.fmt <- sprintf(paste0("%.", digits.cat,
+                                                                 "f"), prop)
+                                      return(paste(x, " (", prop.fmt, ")",
+                                                   sep = ""))
+                                    }))
+          }
+          else {
+            onetbl[-1] <- (function(x) {
               x <- as.numeric(x)
-              prop <- round(x/sum(x),2+digits.cat)*100
-
-              prop.fmt <- sprintf(paste0("%.",digits.cat,"f"),prop)
-              return(paste(x," (",prop.fmt,")",sep=""))
+              prop <- round(x/sum(x), 2 + digits.cat) *
+                100
+              prop.fmt <- sprintf(paste0("%.", digits.cat,
+                                         "f"), prop)
+              return(paste(x, " (", prop.fmt, ")", sep = ""))
             })(onetbl[-1])
           }
         }
       }
-
-      #if the covariate is not a factor
-    }else{
-      #setup the first column
-      #factornames <- c("Mean (sd)",ifelse(IQR,"Median (Q1,Q3)","Median (Min,Max)"),factornames)
-      if (all.stats) {factornames <- c("Mean (sd)", "Median (Q1,Q3)", "Range (min, max)", factornames)
-      } else factornames <- c("Mean (sd)",ifelse(IQR,"Median (Q1,Q3)","Median (Min,Max)"),factornames)
+    }
+    else {
+      if (all.stats) {
+        factornames <- c("Mean (sd)", "Median (Q1,Q3)",
+                         "Range (min, max)", factornames)
+      }
+      else factornames <- c("Mean (sd)", ifelse(IQR, "Median (Q1,Q3)",
+                                                "Median (Min,Max)"), factornames)
       if (!is.null(maincov)) {
-        if(pvalue){
-          if( testcont[1]=='rank-sum test'){
-            if( length(unique(data[[maincov]]))==2 ){
-              p_type = 'Wilcoxon Rank Sum'
-              p <- try( stats::wilcox.test(data[[cov]] ~ data[[maincov]])$p.value,silent=T )
-            } else {
-              p_type='Kruskal Wallis'
-              p <-try( stats::kruskal.test(data[[cov]] ~ data[[maincov]])$p.value,silent=T )
+        if (pvalue) {
+          if (testcont[1] == "rank-sum test") {
+            if (length(unique(data[[maincov]])) == 2) {
+              p_type = "Wilcoxon Rank Sum"
+              p <- try(stats::wilcox.test(data[[cov]] ~
+                                            data[[maincov]])$p.value, silent = T)
+              if (effSize) {
+                e_type <- "Eta sq"
+                e <- try(rstatix::eta_squared(stats::aov(data[[cov]]~data[[maincov]], data=data)), silent = TRUE)
+              }
             }
-          } else {
-            if( length(unique(data[[maincov]]))==2 ){
-              p_type = 't-test'
-              p <-try( stats::t.test(data[[cov]] ~ data[[maincov]])$p.value ,silent=TRUE)
-            } else {
-              p_type = 'ANOVA'
-              p <-try(stats::anova(stats::lm(data[[cov]] ~ data[[maincov]]))[5][[1]][1],silent=TRUE)
-            }}
-
+            else {
+              p_type = "Kruskal Wallis"
+              p <- try(stats::kruskal.test(data[[cov]] ~
+                                             data[[maincov]])$p.value, silent = T)
+              if (effSize) {
+                e_type <- "Eta sq"
+                e <- try(rstatix::eta_squared(stats::aov(data[[cov]]~data[[maincov]], data=data)), silent = TRUE)
+              }
+            }
+          }
+          else {
+            if (length(unique(data[[maincov]])) == 2) {
+              p_type = "t-test"
+              p <- try(stats::t.test(data[[cov]] ~ data[[maincov]])$p.value,
+                       silent = TRUE)
+              if (effSize) {
+                e_type <- "Eta sq"
+                e <- try(rstatix::eta_squared(stats::aov(data[[cov]]~data[[maincov]], data=data)), silent = TRUE)
+              }
+            }
+            else {
+              p_type = "ANOVA"
+              p <- try(stats::anova(stats::lm(data[[cov]] ~
+                                                data[[maincov]]))[5][[1]][1], silent = TRUE)
+              if (effSize) {
+                e_type <- "Eta sq"
+                e <- try(rstatix::eta_squared(stats::aov(data[[cov]]~data[[maincov]], data=data)), silent = TRUE)
+              }
+            }
+          }
           if (is.error(p))
             p <- NA
           p <- lpvalue(p)
+          if (effSize) {
+            if (is.error(e))
+              e <- NA
+            e <- lpvalue(e)
+          }
         }
       }
-      #set up the main columns
-      onetbl <- mapply(function(sublevel,N){
+      onetbl <- mapply(function(sublevel, N) {
         missing <- NULL
-        if(is.na(sublevel[1])| sublevel[1]!="NOMAINCOVNULLNA"){
-          subdata<-subset(data,subset=data[[maincov]]%in%sublevel)
-        }else{subdata<-data}
-        #if there is a missing in the whole data
-        if(ismiss){
-          n<-sum(table(subdata[[cov]]))
-          missing<-N-n
+        if (is.na(sublevel[1]) | sublevel[1] != "NOMAINCOVNULLNA") {
+          subdata <- subset(data, subset = data[[maincov]] %in%
+                              sublevel)
         }
-        # Updated LA to remove NaN from tables
-        sumCov <-round(summary(subdata[[cov]]), digits)
-        if (sumCov[4]=="NaN"){
-          meansd <-''
-          mmm <-''
-          if (all.stats) mmm=c('','')
-        } else {
-          meansd <- paste(niceNum(sumCov["Mean"],digits), " (", niceNum(sd(subdata[[cov]], na.rm = T),digits), ")", sep = "")
-          mmm <- if (IQR |all.stats) {
-            if(all(c(sumCov['Median'],sumCov["1st Qu."],sumCov["3rd Qu."]) ==floor(c(sumCov['Median'],sumCov["1st Qu."],sumCov["3rd Qu."])))){
-              paste(sumCov['Median'], " (", sumCov["1st Qu."], csep(), sumCov["3rd Qu."],")", sep = "")
-            } else {paste(niceNum(sumCov['Median'],digits), " (", niceNum(sumCov["1st Qu."],digits), csep(), niceNum(sumCov["3rd Qu."],digits),")", sep = "")}
-          } else {
-            if(all(c(sumCov['Median'],sumCov["Min."],sumCov["Max."]) ==floor(c(sumCov['Median'],sumCov["Min."],sumCov["Max."])))){
-              paste(sumCov["Median"], " (", sumCov["Min."], csep(),sumCov["Max."], ")", sep = "")
-            } else {paste(niceNum(sumCov['Median'],digits), " (", niceNum(sumCov["Min."],digits), csep(), niceNum(sumCov["Max."],digits),")", sep = "")}
+        else {
+          subdata <- data
+        }
+        if (ismiss) {
+          n <- sum(table(subdata[[cov]]))
+          missing <- N - n
+        }
+        sumCov <- round(summary(subdata[[cov]]), digits)
+        if (sumCov[4] == "NaN") {
+          meansd <- ""
+          mmm <- ""
+          if (all.stats)
+            mmm = c("", "")
+        }
+        else {
+          meansd <- paste(niceNum(sumCov["Mean"], digits),
+                          " (", niceNum(sd(subdata[[cov]], na.rm = T),
+                                        digits), ")", sep = "")
+          mmm <- if (IQR | all.stats) {
+            if (all(c(sumCov["Median"], sumCov["1st Qu."],
+                      sumCov["3rd Qu."]) == floor(c(sumCov["Median"],
+                                                    sumCov["1st Qu."], sumCov["3rd Qu."])))) {
+              paste(sumCov["Median"], " (", sumCov["1st Qu."],
+                    csep(), sumCov["3rd Qu."], ")", sep = "")
+            }
+            else {
+              paste(niceNum(sumCov["Median"], digits),
+                    " (", niceNum(sumCov["1st Qu."], digits),
+                    csep(), niceNum(sumCov["3rd Qu."], digits),
+                    ")", sep = "")
+            }
+          }
+          else {
+            if (all(c(sumCov["Median"], sumCov["Min."],
+                      sumCov["Max."]) == floor(c(sumCov["Median"],
+                                                 sumCov["Min."], sumCov["Max."])))) {
+              paste(sumCov["Median"], " (", sumCov["Min."],
+                    csep(), sumCov["Max."], ")", sep = "")
+            }
+            else {
+              paste(niceNum(sumCov["Median"], digits),
+                    " (", niceNum(sumCov["Min."], digits),
+                    csep(), niceNum(sumCov["Max."], digits),
+                    ")", sep = "")
+            }
           }
           if (all.stats) {
-            mmm <- c(mmm,if(all(c(sumCov["Min."],sumCov["Max."]) ==floor(c(sumCov["Min."],sumCov["Max."])))){
-              paste("(", sumCov["Min."], csep(),sumCov["Max."], ")", sep = "")
-            } else {paste("(", niceNum(sumCov["Min."],digits), csep(), niceNum(sumCov["Max."],digits),")", sep = "")})
-          }}
+            mmm <- c(mmm, if (all(c(sumCov["Min."], sumCov["Max."]) ==
+                                  floor(c(sumCov["Min."], sumCov["Max."])))) {
+              paste("(", sumCov["Min."], csep(), sumCov["Max."],
+                    ")", sep = "")
+            } else {
+              paste("(", niceNum(sumCov["Min."], digits),
+                    csep(), niceNum(sumCov["Max."], digits),
+                    ")", sep = "")
+            })
+          }
+        }
         tbl <- c(meansd, mmm, lbld(missing))
-        return(tbl)}
-        ,levels,numobs[[cov]])}
-
-    #Add the first column to the main columns and get the matrix ready for later
-    factornames<-addspace(sanitizestr(nicename(factornames)))
-    # LA Added 20 Jan 2021 to deal with one-level factors
-    if (is.null(nrow(onetbl))){onetbl <- matrix(data=onetbl,ncol=length(onetbl),nrow=1) }
-
-    onetbl<-cbind(factornames,onetbl)
-
-    if(!is.null(maincov)){
-      onetbl<-rbind(c(lbld(sanitizestr(nicename(cov))),rep("",length(levels[[1]])+1)),onetbl)
-      #      if(pvalue) onetbl<-cbind(onetbl,c(p,rep("",nrow(onetbl)-1)))
-      if (pvalue){
-        p_NA = rep("", nrow(onetbl) - 1)
-        p_NA[levels(data[[cov]]) %in% excludeLevel] <-'excl'
-        onetbl <- cbind(onetbl, c(p,p_NA))
-        if (show.tests) onetbl <- cbind(onetbl, c(p_type,rep("", nrow(onetbl) - 1)))
-      }
-    }else{
-      onetbl<-rbind(c(lbld(sanitizestr(nicename(cov))),""),onetbl)
+        return(tbl)
+      }, levels, numobs[[cov]])
     }
-    rownames(onetbl)<-NULL
-    colnames(onetbl)<-NULL
-    return(onetbl)})
-  table <- do.call("rbind",lapply(out,data.frame,stringsAsFactors = FALSE))
-  ### unlist each column of the table
-  table <- data.frame(apply(table,2,unlist),stringsAsFactors = FALSE)
-  rownames(table)<-NULL
-  if(!is.null(maincov)){
-    colnm_table <- c("Covariate",paste("Full Sample (n=",N,")",sep=""),
-                     mapply(function(x,y){paste(x," (n=",y,")",sep="")},
-                            names(table(data[[maincov]],useNA='ifany')),table(data[[maincov]],useNA='ifany')))
-    if(pvalue) colnm_table <- c(colnm_table,"p-value")
-    if (show.tests) colnm_table <- c(colnm_table,'StatTest')
+    factornames <- addspace(sanitizestr(nicename(factornames)))
+    if (is.null(nrow(onetbl))) {
+      onetbl <- matrix(data = onetbl, ncol = length(onetbl),
+                       nrow = 1)
+    }
+    onetbl <- cbind(factornames, onetbl)
+    if (!is.null(maincov)) {
+      onetbl <- rbind(c(lbld(sanitizestr(nicename(cov))),
+                        rep("", length(levels[[1]]) + 1)), onetbl)
+      if (pvalue) {
+        p_NA = rep("", nrow(onetbl) - 1)
+        p_NA[levels(data[[cov]]) %in% excludeLevel] <- "excl"
+        onetbl <- cbind(onetbl, c(p, p_NA))
+      }
+      if (effSize) {
+        e_NA = rep("", nrow(onetbl) - 1)
+        e_NA[levels(data[[cov]]) %in% excludeLevel] <- "excl"
+        onetbl <- cbind(onetbl, c(e, e_NA))
+      }
+      if (show.tests & effSize) {
+        onetbl <- cbind(onetbl, c(paste(p_type, ", ", e_type, sep=""), rep("", nrow(onetbl) -
+                                                                             1)))
+      }
+      if (show.tests & !effSize) {
+        onetbl <- cbind(onetbl, c(paste(p_type), rep("", nrow(onetbl) -
+                                                       1)))
+      }
+    }
+    else {
+      onetbl <- rbind(c(lbld(sanitizestr(nicename(cov))),
+                        ""), onetbl)
+    }
+    rownames(onetbl) <- NULL
+    colnames(onetbl) <- NULL
+    return(onetbl)
+  })
+  table <- do.call("rbind", lapply(out, data.frame, stringsAsFactors = FALSE))
+  table <- data.frame(apply(table, 2, unlist), stringsAsFactors = FALSE)
+  rownames(table) <- NULL
+  if (!is.null(maincov)) {
+    colnm_table <- c("Covariate", paste("Full Sample (n=",
+                                        N, ")", sep = ""), mapply(function(x, y) {
+                                          paste(x, " (n=", y, ")", sep = "")
+                                        }, names(table(data[[maincov]], useNA = "ifany")), table(data[[maincov]],
+                                                                                                 useNA = "ifany")))
+    if (pvalue)
+      colnm_table <- c(colnm_table, "p-value")
+    if (effSize)
+      colnm_table <- c(colnm_table, "Effect Size")
+    if (show.tests)
+      colnm_table <- c(colnm_table, "StatTest")
     colnames(table) <- colnm_table
-
-  }else{
-    colnames(table)<-c("Covariate",paste("n=",N,sep=""))
-
   }
-  colnames(table)<-sanitizestr(colnames(table))
-
-  #JW May 20 2021 adding option to remove full sample
-  if(!full) table <- table[,-2]
+  else {
+    colnames(table) <- c("Covariate", paste("n=", N, sep = ""))
+  }
+  colnames(table) <- sanitizestr(colnames(table))
+  if (!full)
+    table <- table[, -2]
   return(table)
 }
 
@@ -1055,6 +1212,8 @@ mvsum <- function (model, data, digits=2, showN = FALSE, markup = TRUE, sanitize
   else if (type == "coxph" | type == "crr") {
     beta <- "HR"
     expnt = TRUE
+    # betanames <- attributes(model$terms)$term.labels
+    # if (is.null(betanames))    betanames <- attributes(summary(model)$coef)$dimnames[[1]]
     betanames <- attributes(summary(model)$coef)$dimnames[[1]]
     ss_data <- try(stats::model.frame(model$call$formula, eval(parse(text = paste("data=",
                                                                                   deparse(model$call$data))))), silent = TRUE)
@@ -1083,7 +1242,6 @@ mvsum <- function (model, data, digits=2, showN = FALSE, markup = TRUE, sanitize
   if (length(setdiff(ucall,names(data)))>0) stop('Currently this function is only implemented to work with standard variable names.\n Try converting the data to a standard data.frame with data.frame(data) and re-running the model to use rm_mvsum.')
   indx = try(matchcovariate(betanames, ucall),silent = T)
   if (is.error(indx)) stop('This function not yet implemented for complex function calls. Try re-specifying the model.')
-  #data = data.frame(data)
   for (v in ucall) {
     if (inherits(data[[v]], "character"))
       data[[v]] <- factor(data[[v]])
@@ -1113,8 +1271,6 @@ mvsum <- function (model, data, digits=2, showN = FALSE, markup = TRUE, sanitize
     })
     levelnames <- unlist(lapply(levelnameslist, function(x) paste(x,
                                                                   collapse = ":")))
-    # levelnames <- addspace(sanitizestr(nicename(levelnames)))
-    # covariatename <- lbld(sanitizestr(nicename(oldcovname)))
     covariatename <- oldcovname
     reference = NULL
     title = NULL
@@ -1154,14 +1310,22 @@ mvsum <- function (model, data, digits=2, showN = FALSE, markup = TRUE, sanitize
     } else if (type=='coxph') {
       m_data <- data
       names(m_data)[1] <- 'y'
-      if (ncol(m_data)>2){
-        # run models without robust variances
-        m_full <- try(survival::coxph(y~.,data = m_data,robust=FALSE),silent=TRUE)
-        m_small <- try(survival::coxph(y~.,data = m_data[,-which(names(m_data)==oldcovname)],robust=FALSE),silent=TRUE)
-        globalpvalue <- try(as.vector(stats::na.omit(anova(m_small,m_full)[,"P(>|Chi|)"])),silent = T)
-      } else {
-        globalpvalue <- try(as.vector(stats::na.omit(anova(model)[,"Pr(>|Chi|)"])),silent = T)
-      }
+      # R 4.2.2 breaks this
+      # if (ncol(m_data)>2){
+      #   # run models without robust variances
+      #   m_full <- try(survival::coxph(y~.,data = m_data,robust=FALSE),silent=TRUE)
+      #   m_small <- try(survival::coxph(y~.,data = m_data[,-which(names(m_data)==oldcovname)],robust=FALSE),silent=TRUE)
+      #   globalpvalue <- try(as.vector(stats::na.omit(anova(m_small,m_full)[,"Pr(>|Chi|)"])),silent = T)
+      # } else {
+      #   globalpvalue <- try(as.vector(stats::na.omit(anova(model)[,"Pr(>|Chi|)"])),silent = T)
+      # }
+      # New code 19 Dec 2022
+      # run models without robust variances
+      m_full <- try(survival::coxph(y~.,data = m_data,robust=FALSE),silent=TRUE)
+      m_small <- try(survival::coxph(y~.,data = m_data[,-which(names(m_data)==oldcovname)],robust=FALSE),silent=TRUE)
+      gp_aov <- try(anova(m_small,m_full),silent = T)
+      if (inherits(gp_aov,'try-error')) globalpvalue <- gp_aov else globalpvalue <- as.vector(stats::na.omit(gp_aov[,4]))
+
     } else {
       m_small <- try(stats::update(model,paste0('. ~ . -',oldcovname),data=data),silent=TRUE)
       globalpvalue <- try(as.vector(stats::na.omit(anova(m_small,model)[,"Pr(>F)"])),silent = T)
@@ -1273,20 +1437,8 @@ mvsum <- function (model, data, digits=2, showN = FALSE, markup = TRUE, sanitize
                                      }, oldcovname, level)
                                      return(min(N))
                                    }))
-        # ss_N = c("", unlist(lapply(levelnameslist,
-        #                            function(level) {
-        #                              N <- mapply(function(cn, lvl) {
-        #                                if (cn == lvl) {
-        #                                  nrow(data)
-        #                                } else {
-        #                                  sum(data[[cn]] == lvl)
-        #                                }
-        #                              }, oldcovname, level)
-        #                              return(min(N))
-        #                            })))
       }
       else {
-        # ss_N = c("", table(data[[oldcovname]]))
         ss_N = as.vector(table(data[[oldcovname]]))
       }
       ss_N <- c(nrow(data),ss_N) # Add in the total for the variable
@@ -1349,10 +1501,10 @@ mvsum <- function (model, data, digits=2, showN = FALSE, markup = TRUE, sanitize
 
 #' Create a forest plot using ggplot2
 #'
-#' This function will accept a log or logistic regression fit from glm, and
+#' This function will accept a log or logistic regression fit from glm or geeglm, and
 #' display the OR or RR for each variable on the appropriate log scale.
 #'
-#' @param model an object output from the glm function, must be from a logistic
+#' @param model an object output from the glm or geeglm function, must be from a logistic
 #'   regression
 #' @param conf.level controls the width of the confidence interval
 #' @param orderByRisk logical, should the plot be ordered by risk
@@ -1909,7 +2061,8 @@ nestTable <- function(data,head_col,to_col,colHeader ='',caption=NULL,indent=TRU
     if (sum(is.na(data[[head_col]]))==nrow(data)) break
   }
   header_rows <- which(data[[to_col]] %in% new_headers)
-  to_indent <- which(!(data[[to_col]] %in% new_headers) )
+  to_indent <- which(!(data[[to_col]] %in% new_headers))
+  if (!indent) to_indent <- numeric(0)
 
   data[[to_col]][header_rows] <- paste0(hdr_prefix,data[[to_col]][header_rows],hdr_suffix)
 
@@ -1935,6 +2088,8 @@ nestTable <- function(data,head_col,to_col,colHeader ='',caption=NULL,indent=TRU
 #' used for two groups and an ANOVA will be used for three or more. The
 #' statistical test used can be displayed by specifying show.tests=TRUE.
 #'
+#' Effect size can be obtained when p-value is requested.
+#'
 #' Further formatting options are available using tableOnly=TRUE and outputting
 #' the table with a call to outTable.
 #'
@@ -1957,8 +2112,12 @@ nestTable <- function(data,head_col,to_col,colHeader ='',caption=NULL,indent=TRU
 #' @param all.stats boolean indicating if all summary statistics (Q1,Q3 +
 #'   min,max on a separate line) should be displayed. Overrides IQR.
 #' @param pvalue boolean indicating if you want p-values included in the table
+#' @param effSize boolean indicating if you want effect sizes included in the
+#'   table. Can only be obtained if pvalue is also requested. Effect sizes are
+#'   calculated with the rstatix package using Cramer V for categorical and Eta
+#'   Squared for continuous covariates.
 #' @param unformattedp boolean indicating if you would like the p-value to be
-#'   returned unformated (ie not rounded or prefixed with '<'). Best used with
+#'   returned unformatted (ie not rounded or prefixed with '<'). Best used with
 #'   tableOnly = T and outTable function. See examples.
 #' @param show.tests boolean indicating if the type of statistical used should
 #'   be shown in a column beside the pvalues. Ignored if pvalue=FALSE.
@@ -1972,6 +2131,8 @@ nestTable <- function(data,head_col,to_col,colHeader ='',caption=NULL,indent=TRU
 #'   be included in statistical tests
 #' @param percentage choice of how percentages are presented, one of
 #'   \emph{column} (default) or \emph{row}
+#' @param dropLevels logical, indicating if empty factor levels be dropped from
+#'   the output, default is TRUE.
 #' @param excludeLevels a named list of covariate levels to exclude from
 #'   statistical tests in the form list(varname =c('level1','level2')). These
 #'   levels will be excluded from association tests, but not the table. This can
@@ -1980,20 +2141,23 @@ nestTable <- function(data,head_col,to_col,colHeader ='',caption=NULL,indent=TRU
 #' @param numobs named list overriding the number of people you expect to have
 #'   the covariate
 #' @param chunk_label only used if output is to Word to allow cross-referencing
-#' @param markup boolean indicating if you want latex markup
-#' @param sanitize boolean indicating if you want to sanitize all strings to not
-#'   break LaTeX
 #' @keywords dataframe
 #' @return A character vector of the table source code, unless tableOnly=TRUE in
 #'   which case a data frame is returned
 #' @export
 #' @seealso \code{\link{covsum}},\code{\link{fisher.test}},
 #'   \code{\link{chisq.test}}, \code{\link{wilcox.test}},
-#'   \code{\link{kruskal.test}}, \code{\link{anova}}, and \code{\link{outTable}}
+#'   \code{\link{kruskal.test}}, \code{\link{anova}}, \code{\link{cramer_v}},
+#'   \code{\link{eta_squared}}, and \code{\link{outTable}}
 #' @examples
 #' rm_covsum(data=pembrolizumab, maincov = 'orr',
 #' covs=c('age','sex','pdl1','tmb','l_size','change_ctdna_group'),
 #' show.tests=TRUE)
+#'
+#' # To Show Effect Sizes
+#' rm_covsum(data=pembrolizumab, maincov = 'orr',
+#' covs=c('age','sex'),
+#' effSize=TRUE)
 #'
 #' # To make custom changes or change the fontsize in PDF/HTML
 #' tab <- rm_covsum(data=pembrolizumab,maincov = 'change_ctdna_group',
@@ -2006,51 +2170,60 @@ nestTable <- function(data,head_col,to_col,colHeader ='',caption=NULL,indent=TRU
 #' show.tests=TRUE,unformattedp=TRUE,tableOnly=TRUE)
 #' outTable(tab,digits=5)
 #' outTable(tab,digits=5, applyAttributes=FALSE) # remove bold/indent
-rm_covsum <- function(data,covs,maincov=NULL,caption=NULL,tableOnly=FALSE,covTitle='',
-                      digits=1,digits.cat = 0,nicenames=TRUE,IQR = FALSE,all.stats=FALSE,
-                      pvalue=TRUE,unformattedp=FALSE,show.tests=FALSE,
-                      testcont = c('rank-sum test','ANOVA'),testcat = c('Chi-squared','Fisher'),
-                      full=TRUE,include_missing=FALSE,percentage=c('column','row'),
-                      excludeLevels=NULL,numobs=NULL,markup=TRUE, sanitize= TRUE,chunk_label){
-  if (unformattedp) formatp <- function(x) {as.numeric(x)}
-
+rm_covsum <- function (data, covs, maincov = NULL, caption = NULL, tableOnly = FALSE,
+                       covTitle = "", digits = 1, digits.cat = 0, nicenames = TRUE,
+                       IQR = FALSE, all.stats = FALSE, pvalue = TRUE, effSize = FALSE, unformattedp = FALSE,
+                       show.tests = FALSE, testcont = c("rank-sum test", "ANOVA"),
+                       testcat = c("Chi-squared", "Fisher"), full = TRUE, include_missing = FALSE,
+                       percentage = c("column", "row"), dropLevels = TRUE, excludeLevels = NULL,
+                       numobs = NULL, chunk_label)
+{
+  if (unformattedp)
+    formatp <- function(x) {
+      as.numeric(x)
+    }
   argList <- as.list(match.call(expand.dots = TRUE)[-1])
-  argsToPass <- intersect(names(formals(covsum)),names(argList))
+  argsToPass <- intersect(names(formals(covsum)), names(argList))
   covsumArgs <- argList[names(argList) %in% argsToPass]
-  covsumArgs[["markup"]] <- FALSE; covsumArgs[["sanitize"]] <- FALSE
-  tab <- do.call(covsum,covsumArgs)
-  if (nicenames) output_var_names <- gsub('[_.]',' ',covs) else output_var_names <- covs
-  # first occurrence of each variable in the first column
-  vI <- unlist(sapply(output_var_names, function (x) grep(x,tab[[1]])[1]))
-  to_indent <- setdiff(1:nrow(tab),vI)
+  covsumArgs[["markup"]] <- FALSE
+  covsumArgs[["sanitize"]] <- FALSE
+  tab <- do.call(covsum, covsumArgs)
+  if (nicenames)
+    output_var_names <- gsub("[_.]", " ", covs)
+  else output_var_names <- covs
+  vI <- unlist(sapply(output_var_names, function(x) which(x ==
+                                                            tab[[1]])[1]))
+  to_indent <- setdiff(1:nrow(tab), vI)
   to_bold_name <- vI
-  if (nicenames) tab$Covariate <- gsub('[_.]',' ',tab$Covariate)
-  names(tab)[1] <-covTitle
+  if (nicenames)
+    tab$Covariate <- gsub("[_.]", " ", tab$Covariate)
+  names(tab)[1] <- covTitle
   bold_cells <- arrayInd(to_bold_name, dim(tab))
-
-  if ('p-value' %in% names(tab)) {
-    # format p-values nicely
-    to_bold_p <- which(tab[["p-value"]]<.05 & !tab[["p-value"]]=="")
-    p_vals <- tab[['p-value']]
-    new_p <- sapply(p_vals,formatp)
-    tab[['p-value']] <- new_p
-    if (length(to_bold_p)>0)    bold_cells <- rbind(bold_cells,
-                                                    matrix(cbind(to_bold_p, which(names(tab)=='p-value')),ncol=2))
+  if ("p-value" %in% names(tab)) {
+    to_bold_p <- which(as.numeric(tab[["p-value"]]) < 0.05)
+    p_vals <- tab[["p-value"]]
+    new_p <- sapply(p_vals, formatp)
+    tab[["p-value"]] <- new_p
+    if (length(to_bold_p) > 0)
+      bold_cells <- rbind(bold_cells, matrix(cbind(to_bold_p,
+                                                   which(names(tab) == "p-value")), ncol = 2))
   }
-
-  if (tableOnly){
-    if (names(tab)[1]=='') names(tab)[1]<- 'Covariate'
-    attr(tab, 'to_indent') <- to_indent
-    attr(tab,'bold_cells') <- bold_cells
-    attr(tab,'dimchk') <- dim(tab)
+  if ("Effect Size" %in% names(tab)) {
+    e_vals <- tab[["Effect Size"]]
+    new_e <- sapply(e_vals, formatp)
+    tab[["Effect Size"]] <- new_e
+  }
+  if (tableOnly) {
+    if (names(tab)[1] == "")
+      names(tab)[1] <- "Covariate"
+    attr(tab, "to_indent") <- to_indent
+    attr(tab, "bold_cells") <- bold_cells
+    attr(tab, "dimchk") <- dim(tab)
     return(tab)
   }
-
-
-  outTable(tab=tab,to_indent=to_indent,bold_cells = bold_cells,
-           caption=caption,
-           chunk_label=ifelse(missing(chunk_label),'NOLABELTOADD',chunk_label))
-
+  outTable(tab = tab, to_indent = to_indent, bold_cells = bold_cells,
+           caption = caption, chunk_label = ifelse(missing(chunk_label),
+                                                   "NOLABELTOADD", chunk_label))
 }
 
 #' Output several univariate models nicely in a single table
@@ -2085,7 +2258,7 @@ rm_covsum <- function(data,covs,maincov=NULL,caption=NULL,tableOnly=FALSE,covTit
 #'   from the table
 #' @param p.adjust p-adjustments to be performed (Global p-values only)
 #' @param unformattedp boolean indicating if you would like the p-value to be
-#'   returned unformated (ie not rounded or prefixed with '<'). Should be used
+#'   returned unformatted (ie not rounded or prefixed with '<'). Should be used
 #'   in conjunction with the digits argument.
 #' @param chunk_label only used if output is to Word to allow cross-referencing
 #' @param  gee boolean indicating if gee models should be fit to account for
@@ -2217,23 +2390,28 @@ rm_uvsum <- function(response, covs , data , digits=2, covTitle='',caption=NULL,
   if (p.adjust!='none') cap_warn <- paste0(cap_warn,'. Global p-values were adjusted according to the ',p.adjust,' method.')
 
   if (nicenames) output_var_names <- gsub('[_.]',' ',covs) else output_var_names <- covs
-  vI <- unlist(sapply(output_var_names, function (x) grep(x,tab[[1]])[1]))
+#  vI <- unlist(sapply(output_var_names, function (x) grep(x,tab[[1]])[1]))
+  vI <- unlist(sapply(output_var_names, function (x) which(x==tab[[1]])[1]))
   to_indent <- setdiff(1:nrow(tab),vI)
   to_bold_name <- vI
   if (nicenames) tab$Covariate <- gsub('[_.]',' ',tab$Covariate)
   bold_cells <- arrayInd(to_bold_name, dim(tab))
 
+  if ("Global p-value" %in% names(tab)){
+    tab[["Global p-value"]][which(tab[["Global p-value"]]==''|tab[["Global p-value"]]=='NA')] <-NA
+  }
+
   # perform p-value adjustment across all p-values
   if ("Global p-value" %in% names(tab)){
-    raw_p <- ifelse(tab[["Global p-value"]]=='',tab[["p-value"]],tab[["Global p-value"]])
+    raw_p <- ifelse(is.na(tab[["Global p-value"]]),tab[["p-value"]],tab[["Global p-value"]])
     p_sig <- suppressWarnings(stats::p.adjust(raw_p,method=p.adjust))
+    to_bold_p <- which(p_sig<0.05)
     p_sig <- sapply(p_sig,formatp)
-    gp_vals <- which(tab[["Global p-value"]]!='' & !is.na(tab[["Global p-value"]]))
+    gp_vals <- which(!is.na(tab[["Global p-value"]]))
     tab[["Global p-value"]][gp_vals]  <- p_sig[gp_vals]
     p_vals <- which(tab[["p-value"]]!='' & !is.na(tab[["p-value"]]))
     tab[["p-value"]][p_vals]  <- p_sig[p_vals]
 
-    to_bold_p <- which(tab[["Global p-value"]]<.05 & !tab[["Global p-value"]]=="")
     if (length(to_bold_p)>0) bold_cells <- rbind(bold_cells,
                                                  matrix(cbind(to_bold_p, which(names(tab)=='Global p-value')),ncol=2))
 
@@ -2244,7 +2422,8 @@ rm_uvsum <- function(response, covs , data , digits=2, covTitle='',caption=NULL,
   }
   if(p.adjust!='none') tab[["raw p-value"]]<-formatp(raw_p)
 
-  to_bold_p <- which(tab[["p-value"]]<.05 & !tab[["p-value"]]=="")
+  to_bold_p <- which(p_sig<.05)
+
   if (length(to_bold_p)>0) bold_cells <- rbind(bold_cells,
                                                matrix(cbind(to_bold_p, which(names(tab)=='p-value')),ncol=2))
 
@@ -2304,12 +2483,9 @@ rm_uvsum <- function(response, covs , data , digits=2, covTitle='',caption=NULL,
 #' @param tableOnly boolean indicating if unformatted table should be returned
 #' @param p.adjust p-adjustments to be performed (Global p-values only)
 #' @param unformattedp boolean indicating if you would like the p-value to be
-#'   returned unformated (ie not rounded or prefixed with '<'). Should be used
+#'   returned unformatted (ie not rounded or prefixed with '<'). Should be used
 #'   in conjuction with the digits argument.
 #' @param chunk_label only used if output is to Word to allow cross-referencing
-#' @param markup boolean indicating if you want latex markup
-#' @param sanitize boolean indicating if you want to sanitize all strings to not
-#'   break LaTeX
 #' @param nicenames boolean indicating if you want to replace . and _ in strings
 #'   with a space
 #' @return A character vector of the table source code, unless tableOnly=TRUE in
@@ -2334,7 +2510,7 @@ rm_uvsum <- function(response, covs , data , digits=2, covTitle='',caption=NULL,
 #' res.cox <- coxph(Surv(os_time, os_status) ~ sex+age+l_size+tmb, data = pembrolizumab)
 #' rm_mvsum(res.cox, vif=TRUE)
 rm_mvsum <- function(model, data, digits=2,covTitle='',showN=FALSE,CIwidth=0.95, vif=TRUE,
-                     caption=NULL,tableOnly=FALSE,p.adjust='none',unformattedp=FALSE,chunk_label, markup = TRUE,sanitize = TRUE,nicenames = TRUE){
+                     caption=NULL,tableOnly=FALSE,p.adjust='none',unformattedp=FALSE,chunk_label, nicenames = TRUE){
   if (unformattedp) formatp <- function(x) {as.numeric(x)}
   # get the table
   tab <- mvsum(model=model,data=data,digits=digits,markup = FALSE,
@@ -2344,21 +2520,21 @@ rm_mvsum <- function(model, data, digits=2,covTitle='',showN=FALSE,CIwidth=0.95,
                        sapply(attr(tab,'covs'),function(x) grep(x,tab$Covariate)[1],
                               USE.NAMES = FALSE))
 
-  if ("Global p-value" %in% names(tab))
-    to_indent <- setdiff(to_indent,which(tab[["Global p-value"]]!=''))
+  if ("Global p-value" %in% names(tab)){
+    tab[["Global p-value"]][which(tab[["Global p-value"]]==''|tab[["Global p-value"]]=='NA')] <-NA
+    to_indent <- setdiff(to_indent,which(!is.na(tab[["Global p-value"]])))
+  }
   to_bold_name <- setdiff(1:nrow(tab),to_indent)
   bold_cells <- arrayInd(to_bold_name, dim(tab))
 
   # perform p-value adjustment across all p-values
   if ("Global p-value" %in% names(tab)){
-    raw_p <- ifelse(tab[["Global p-value"]]=='',tab[["p-value"]],tab[["Global p-value"]])
+    raw_p <- ifelse(is.na(tab[["Global p-value"]]),tab[["p-value"]],tab[["Global p-value"]])
     p_sig <- suppressWarnings(stats::p.adjust(raw_p,method=p.adjust))
     p_sig <- sapply(p_sig,formatp)
-    tab[["Global p-value"]][tab[["Global p-value"]]!='']  <- p_sig[tab[["Global p-value"]]!='']
-    tab[["p-value"]][tab[["Global p-value"]]=='']  <- p_sig[tab[["Global p-value"]]=='']
-    to_bold_p <- which(tab[["Global p-value"]]<.05 &
-                         !tab[["Global p-value"]]=="" &
-                         !is.na(tab[["Global p-value"]]))
+    tab[["Global p-value"]][!is.na(tab[["Global p-value"]])]  <- p_sig[!is.na(tab[["Global p-value"]])]
+    tab[["p-value"]][is.na(tab[["Global p-value"]])]  <- p_sig[is.na(tab[["Global p-value"]])]
+    to_bold_p <- which(p_sig<0.05)
     if (length(to_bold_p)>0) bold_cells <- rbind(bold_cells,
                                                  matrix(cbind(to_bold_p, which(names(tab)=='Global p-value')),ncol=2))
 
@@ -2369,9 +2545,8 @@ rm_mvsum <- function(model, data, digits=2,covTitle='',showN=FALSE,CIwidth=0.95,
   }
   if(p.adjust!='none') tab[["raw p-value"]]<-formatp(raw_p)
 
-  to_bold_p <- which(tab[["p-value"]]<.05 &
-                       !tab[["p-value"]]=="" &
-                       !is.na(tab[["p-value"]]))
+  to_bold_p <- which(p_sig<.05)
+
   if (length(to_bold_p)>0)  bold_cells <- rbind(bold_cells,
                                                 matrix(cbind(to_bold_p, which(names(tab)=='p-value')),ncol=2))
 
@@ -3554,7 +3729,7 @@ rm_survdiff <- function(data,time,status,covs,strata,includeVarNames=FALSE,
 #'   descriptions (useful for displaying years with data provided in months)
 #' @param CIwidth width of the survival probabilities, default is 95%
 #' @param unformattedp boolean indicating if you would like the p-value to be
-#'   returned unformated (ie not rounded or prefixed with '<'). Should be used
+#'   returned unformatted (ie not rounded or prefixed with '<'). Should be used
 #'   in conjunction with the digits argument.
 #' @param conf.type type of confidence interval see \code{\link{survfit}} for
 #'   details. Default is 'log'.

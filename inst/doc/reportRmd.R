@@ -30,6 +30,12 @@ show.tests=TRUE)
 
 ## -----------------------------------------------------------------------------
 rm_covsum(data=pembrolizumab, maincov = 'sex',
+covs=c('age','pdl1','change_ctdna_group'),
+effSize=TRUE,show.tests=TRUE)
+
+
+## -----------------------------------------------------------------------------
+rm_covsum(data=pembrolizumab, maincov = 'sex',
 covs=c('age','pdl1'),
 testcont='ANOVA',
 show.tests=TRUE)

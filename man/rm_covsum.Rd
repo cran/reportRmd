@@ -17,6 +17,7 @@ rm_covsum(
   IQR = FALSE,
   all.stats = FALSE,
   pvalue = TRUE,
+  effSize = FALSE,
   unformattedp = FALSE,
   show.tests = FALSE,
   testcont = c("rank-sum test", "ANOVA"),
@@ -24,10 +25,9 @@ rm_covsum(
   full = TRUE,
   include_missing = FALSE,
   percentage = c("column", "row"),
+  dropLevels = TRUE,
   excludeLevels = NULL,
   numobs = NULL,
-  markup = TRUE,
-  sanitize = TRUE,
   chunk_label
 )
 }
@@ -63,8 +63,13 @@ min,max on a separate line) should be displayed. Overrides IQR.}
 
 \item{pvalue}{boolean indicating if you want p-values included in the table}
 
+\item{effSize}{boolean indicating if you want effect sizes included in the
+table. Can only be obtained if pvalue is also requested. Effect sizes are
+calculated with the rstatix package using Cramer V for categorical and Eta
+Squared for continuous covariates.}
+
 \item{unformattedp}{boolean indicating if you would like the p-value to be
-returned unformated (ie not rounded or prefixed with '<'). Best used with
+returned unformatted (ie not rounded or prefixed with '<'). Best used with
 tableOnly = T and outTable function. See examples.}
 
 \item{show.tests}{boolean indicating if the type of statistical used should
@@ -85,6 +90,9 @@ be included in statistical tests}
 \item{percentage}{choice of how percentages are presented, one of
 \emph{column} (default) or \emph{row}}
 
+\item{dropLevels}{logical, indicating if empty factor levels be dropped from
+the output, default is TRUE.}
+
 \item{excludeLevels}{a named list of covariate levels to exclude from
 statistical tests in the form list(varname =c('level1','level2')). These
 levels will be excluded from association tests, but not the table. This can
@@ -93,11 +101,6 @@ presented). Ignored if pvalue=FALSE.}
 
 \item{numobs}{named list overriding the number of people you expect to have
 the covariate}
-
-\item{markup}{boolean indicating if you want latex markup}
-
-\item{sanitize}{boolean indicating if you want to sanitize all strings to not
-break LaTeX}
 
 \item{chunk_label}{only used if output is to Word to allow cross-referencing}
 }
@@ -116,6 +119,8 @@ simulation. If testcont='ANOVA' then the t-test with unequal variance will be
 used for two groups and an ANOVA will be used for three or more. The
 statistical test used can be displayed by specifying show.tests=TRUE.
 
+Effect size can be obtained when p-value is requested.
+
 Further formatting options are available using tableOnly=TRUE and outputting
 the table with a call to outTable.
 }
@@ -123,6 +128,11 @@ the table with a call to outTable.
 rm_covsum(data=pembrolizumab, maincov = 'orr',
 covs=c('age','sex','pdl1','tmb','l_size','change_ctdna_group'),
 show.tests=TRUE)
+
+# To Show Effect Sizes
+rm_covsum(data=pembrolizumab, maincov = 'orr',
+covs=c('age','sex'),
+effSize=TRUE)
 
 # To make custom changes or change the fontsize in PDF/HTML
 tab <- rm_covsum(data=pembrolizumab,maincov = 'change_ctdna_group',
@@ -139,6 +149,7 @@ outTable(tab,digits=5, applyAttributes=FALSE) # remove bold/indent
 \seealso{
 \code{\link{covsum}},\code{\link{fisher.test}},
 \code{\link{chisq.test}}, \code{\link{wilcox.test}},
-\code{\link{kruskal.test}}, \code{\link{anova}}, and \code{\link{outTable}}
+\code{\link{kruskal.test}}, \code{\link{anova}}, \code{\link{cramer_v}},
+\code{\link{eta_squared}}, and \code{\link{outTable}}
 }
 \keyword{dataframe}

@@ -40,7 +40,10 @@ csep<-function(){return(", ")}
 #'@param digits numeric
 #'@keywords helper
 niceNum <- function(x,digits=2){
-  rndx = sapply(x, function(x) {format(round(as.numeric(x),digits),nsmall=digits)})
+  rndx = sapply(x, function(x) {
+    if(is.na(x)) return(x)
+    if(is.null(x)) return(x)
+    format(round(as.numeric(x),digits),nsmall=digits)})
   return(gsub(" ","",rndx))
 }
 
@@ -111,7 +114,7 @@ betaindx<-function(x){
 
 #' Capitalize a string
 #'
-#' Calitalize a string
+#' Capitalize a string
 #'
 #' @param x string
 #' @keywords helper
@@ -476,7 +479,7 @@ color_palette_surv_ggplot <- function(length){
 
 # (forestplot2) ---------------------------------------------------------
 format_glm = function(glm_fit,conf.level = 0.95,digits=c(2,3),orderByRisk=TRUE){
-  if (! class(glm_fit)[1] %in% c('glm','polr')) stop('Only objects of class glm and polr are accepted.')
+  if (! class(glm_fit)[1] %in% c('glm','geeglm','polr')) stop('Only objects of class glm, geeglm and polr are accepted.')
 
   #extracting ORs and p values
   Z = stats::qnorm(1-(1-conf.level)/2)
@@ -484,7 +487,7 @@ format_glm = function(glm_fit,conf.level = 0.95,digits=c(2,3),orderByRisk=TRUE){
   tab <- cbind(variable= rownames(tab),tab)
   rownames(tab) <- NULL
 
-  if (class(glm_fit)[1]=='glm'){
+  if (class(glm_fit)[1] %in% c("glm", "geeglm")){
     names(tab) =  c("variable","estimate",  "std.error" ,"statistic", "p.value")
     tab = tab[-which(tab$variable=='(Intercept)'),]
   }  else {

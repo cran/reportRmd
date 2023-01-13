@@ -16,7 +16,9 @@ covsum(
   IQR = FALSE,
   all.stats = FALSE,
   pvalue = TRUE,
+  effSize = FALSE,
   show.tests = FALSE,
+  dropLevels = TRUE,
   excludeLevels = NULL,
   full = TRUE,
   digits.cat = 0,
@@ -55,8 +57,16 @@ min,max on a separate line) should be displayed. Overrides IQR.}
 
 \item{pvalue}{boolean indicating if you want p-values included in the table}
 
+\item{effSize}{boolean indicating if you want effect sizes included in the
+table. Can only be obtained if pvalue is also requested. Effect sizes are
+calculated with the rstatix package using Cramer V for categorical and Eta
+Squared for continuous covariates.}
+
 \item{show.tests}{boolean indicating if the type of statistical used should
 be shown in a column beside the pvalues. Ignored if pvalue=FALSE.}
+
+\item{dropLevels}{logical, indicating if empty factor levels be dropped from
+the output, default is TRUE.}
 
 \item{excludeLevels}{a named list of covariate levels to exclude from
 statistical tests in the form list(varname =c('level1','level2')). These

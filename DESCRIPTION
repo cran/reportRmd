@@ -1,6 +1,6 @@
 Package: reportRmd
 Title: Tidy Presentation of Clinical Reporting
-Version: 0.0.1
+Version: 0.0.2
 Authors@R: c(
     person(given="Lisa",family="Avery",email = "lisa.avery@uhn.ca",role=c("cre","aut")),
     person(given="Ryan",family="Del Bel",email = "rdelbel@gmail.com",role="aut"),
@@ -18,15 +18,15 @@ License: MIT + file LICENSE
 Suggests: rmarkdown, testthat (>= 3.0.0)
 Config/testthat/edition: 3
 Encoding: UTF-8
-RoxygenNote: 7.2.1
+RoxygenNote: 7.2.3
 Imports: aod, cmprsk, geepack, ggplot2, ggpubr, gridExtra, kableExtra,
-        knitr, MASS, pander, plyr, rlang, scales, survival
+        knitr, MASS, pander, plyr, rlang, rstatix, scales, survival
 Collate: 'helper.R' 'main.R' 'globals.R' 'data.R'
 Depends: R (>= 2.10)
 LazyData: true
-VignetteBuilder: knitr
+VignetteBuilder: knitr, rmarkdown
 NeedsCompilation: no
-Packaged: 2022-10-13 13:27:15 UTC; lisa
+Packaged: 2023-01-13 17:31:20 UTC; lisa
 Author: Lisa Avery [cre, aut],
   Ryan Del Bel [aut],
   Osvaldo Espin-Garcia [aut],
@@ -36,4 +36,4 @@ Author: Lisa Avery [cre, aut],
   Wei Xu [aut]
 Maintainer: Lisa Avery <lisa.avery@uhn.ca>
 Repository: CRAN
-Date/Publication: 2022-10-17 06:10:02 UTC
+Date/Publication: 2023-01-13 18:50:02 UTC
