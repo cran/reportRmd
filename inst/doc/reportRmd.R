@@ -3,6 +3,7 @@ library(reportRmd)
 knitr::opts_chunk$set(message = FALSE, warning = FALSE,dev="cairo_pdf")
 
 ## -----------------------------------------------------------------------------
+data("pembrolizumab")
 rm_covsum(data=pembrolizumab, 
 covs=c('age','sex'))
 
@@ -31,15 +32,13 @@ show.tests=TRUE)
 ## -----------------------------------------------------------------------------
 rm_covsum(data=pembrolizumab, maincov = 'sex',
 covs=c('age','pdl1','change_ctdna_group'),
-effSize=TRUE,show.tests=TRUE)
-
+show.tests=TRUE, effSize=TRUE)
 
 ## -----------------------------------------------------------------------------
 rm_covsum(data=pembrolizumab, maincov = 'sex',
 covs=c('age','pdl1'),
 testcont='ANOVA',
-show.tests=TRUE)
-
+show.tests=TRUE, effSize=TRUE)
 
 ## -----------------------------------------------------------------------------
 rm_covsum(data=pembrolizumab, maincov = 'sex',
@@ -56,7 +55,8 @@ percentage='row')
 
 ## -----------------------------------------------------------------------------
 rm_uvsum(data=pembrolizumab, response='orr',
-covs=c('age','pdl1','change_ctdna_group'))
+covs=c('age','pdl1','change_ctdna_group'),p.adjust = 'holm')
+
 
 
 ## -----------------------------------------------------------------------------
@@ -70,6 +70,7 @@ covs=c('age','pdl1','change_ctdna_group'))
 
 
 ## -----------------------------------------------------------------------------
+data("ctDNA")
  rm_uvsum(response = 'size_change',
  covs=c('time','ctdna_status'),
  gee=TRUE,
@@ -86,7 +87,8 @@ rm_uvsum(response = 'orr',
 glm_fit <- glm(orr~change_ctdna_group+pdl1+age,
                family='binomial',
                data = pembrolizumab)
-rm_mvsum(glm_fit)
+rm_mvsum(glm_fit,p.adjust = 'holm')
+
 
 ## -----------------------------------------------------------------------------
 rm_mvsum(glm_fit, showN = TRUE, vif=TRUE,p.adjust = 'holm')
@@ -152,20 +154,92 @@ rm_survtime(data=pembrolizumab,time='os_time',status='os_status', covs='age',
 rm_survdiff(data=pembrolizumab,time='os_time',status='os_status', 
             covs='sex',strata='cohort',digits=1)
 
-## ---- , fig.width=7, fig.height=4---------------------------------------------
+## -----------------------------------------------------------------------------
+data(ctDNA)
+rm_covsum(data=ctDNA,
+          covs=c('cohort','ctdna_status','size_change'))
+
+
+## -----------------------------------------------------------------------------
+
+ctDNA_names <- data.frame(var=names(ctDNA),
+                          label=c('Patient ID',
+                                  'Study Cohort',
+                                  'Change in ctDNA since baseline',
+                                  'Number of weeks on treatment',
+                                  'Percentage change in tumour measurement'))
+ctDNA <- set_labels(ctDNA,ctDNA_names)
+
+rm_covsum(data=ctDNA,
+          covs=c('cohort','ctdna_status','size_change'))
+
+
+## -----------------------------------------------------------------------------
+ctDNA <- set_var_labels(ctDNA,
+                        cohort="A new cohort label")
+rm_covsum(data=ctDNA,
+          covs=c('cohort','ctdna_status','size_change'))
+
+
+## -----------------------------------------------------------------------------
+var_labels <- extract_labels(ctDNA)
+var_labels
+
+## -----------------------------------------------------------------------------
+ctDNA <- clear_labels(ctDNA)
+
+## ----, fig.width=7, fig.height=4----------------------------------------------
 plotuv(data=pembrolizumab, response='orr',
 covs=c('age','cohort','pdl1','change_ctdna_group'))
 
 
-## ---- , fig.width=7, fig.height=2---------------------------------------------
+## ----, fig.width=7, fig.height=2----------------------------------------------
+forestplotUV(data=pembrolizumab, response='orr',
+covs=c('age','sex','pdl1','change_ctdna_group'))
+
+## ----, fig.width=7, fig.height=2----------------------------------------------
 require(ggplot2)
-glm_fit <- glm(orr~age+sex+change_ctdna_group+pdl1,
+glm_fit <- glm(orr~change_ctdna_group+pdl1,
                family='binomial',
                data = pembrolizumab)
-forestplot2(glm_fit)
+forestplotMV(glm_fit)
 
-## ---- fig.width=7,fig.height=5------------------------------------------------
+## -----------------------------------------------------------------------------
+uvFP <- forestplotUV(data=pembrolizumab, response='orr',
+covs=c('age','sex','pdl1','change_ctdna_group'))
+
+glm_fit <- glm(orr~change_ctdna_group+pdl1,
+               family='binomial',
+               data = pembrolizumab)
+mvFP <- forestplotMV(glm_fit)
+
+forestplotUVMV(uvFP,mvFP,showN=T,showEvent=T)
+
+## -----------------------------------------------------------------------------
+uvFP <- forestplotUV(data=pembrolizumab, response='orr',
+covs=c('age','sex','pdl1','change_ctdna_group'))
+
+glm_fit <- glm(orr~change_ctdna_group+pdl1,
+               family='binomial',
+               data = pembrolizumab)
+mvFP <- forestplotMV(glm_fit)
+
+forestplotUVMV(uvFP,mvFP,showN=F,showEvent=F,colours=c("orange","black","blue"),logScale=T)
+
+## ----fig.width=7,fig.height=5-------------------------------------------------
 ggkmcif(response = c('os_time','os_status'),
 cov='cohort',
 data=pembrolizumab)
+
+## -----------------------------------------------------------------------------
+ rm_uvsum(response = 'baseline_ctdna',
+ covs=c('age','sex','l_size','pdl1','tmb'),
+ data=pembrolizumab)
+ 
+ options('reportRmd.digits'=1) 
+ 
+rm_uvsum(response = 'baseline_ctdna',
+ covs=c('age','sex','l_size','pdl1','tmb'),
+ data=pembrolizumab)
+
 
