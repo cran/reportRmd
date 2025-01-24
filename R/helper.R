@@ -150,7 +150,6 @@ nicename <-function (strings,check_numbers=TRUE)
     original_x <- x
     x <- chartr(".", " ", x)
     x <- chartr("_", " ", x)
-
     if(check_numbers){
       p.positions <- gregexpr(pattern ='\\d\\.[0-9]+',original_x)[[1]]+1
       for(pos in p.positions){
@@ -158,6 +157,7 @@ nicename <-function (strings,check_numbers=TRUE)
       }
 
     }
+    x <- gsub(" +", " ", x)
     return(x)
   })
   return(out)
@@ -219,8 +219,8 @@ sanitize <- function(str) {
 
 #'Sanitizes strings to not break LaTeX
 #'
-#'Strings with special charaters will break LaTeX if returned 'asis' by knitr.
-#'This happens every time we use one of the main reportRx functions. We first
+#'Strings with special characters will break LaTeX if returned 'asis' by knitr.
+#'This happens every time we use one of the main reportRmd functions. We first
 #'sanitize our strings with this function to stop LaTeX from breaking.
 #'
 #'@param str a vector of strings to sanitize
@@ -254,7 +254,9 @@ hbld<-function(strings){sapply(strings,function(x){
 #'@keywords helper
 rmds <- function(s){
   sapply(s,function(x){
-    # gsub("^[$]",'',x)
+    x <- gsub("<0.001",'&lt;0.001',x)
+    # x <- gsub("<",'&lt;',x)
+    # x <- gsub(">",'&gt;',x)
     gsub("[$]",'<span style="display: inline">&#36</span>',x)
   })
 }
@@ -681,3 +683,5 @@ fillNAs <- function(x) {
     ind = c(1,ind)
   rep(x[ind], times = diff(c(ind, length(x) + 1) ))
 }
+
+

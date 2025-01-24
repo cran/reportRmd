@@ -1,3 +1,24 @@
+# reportRmd 0.1.1
+
+## New features
+
+- new more compact and flexible reporting function (rm_compactsum) that allows more control over each variable summarised and displays text summarising which tests and effect sizes were computed
+- new function to apply variable labels to ggplots (replace_plot_labels)
+- more comprehensive model summary function to allow plot extensions
+- incorporated tidyselect into main summary functions
+- support for tidycmprsk models
+
+## Minor improvements and fixes
+
+- removed ability to force Wald confidence intervals, confidence intervals now computed by the updated confint in base R
+- rm_mvsum and rm_uvsum have been updated in the backend to enable easier extendibility to different model types
+- bug fix in nestTable so variables order properly with repeat level names
+- numerous bug fixes in formatting of tables, especially with duplicated variable and level names
+- added automated testing of the proportional hazards assumption when reporting coxph models
+- bug fix for computing global p-values in models with offset terms
+- documentation updates
+
+
 # reportRmd 0.1.0
 
 ## New features
@@ -5,7 +26,7 @@
 - cumulative incidence can now be summarised by event type and time
 - revised survival curves are now properly aligned and return ggplots
 - variable labels are automatically displayed in summary tables
-- forest plots now suppose poisson and negative binomial models
+- forest plots now support poisson and negative binomial models
 - options to globally set the number of digits for a report
 
 ## Minor improvements and fixes
