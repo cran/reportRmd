@@ -17,7 +17,8 @@ rm_survdiff(
   conf.type = "log",
   caption = NULL,
   tableOnly = FALSE,
-  fontsize
+  fontsize,
+  unformattedp = FALSE
 )
 }
 \arguments{
@@ -49,6 +50,10 @@ to display, defaults to c('N','Observed','Expected')}
 \item{tableOnly}{should a dataframe or a formatted object be returned}
 
 \item{fontsize}{PDF/HTML output only, manually set the table fontsize}
+
+\item{unformattedp}{boolean indicating if you would like the p-value to be
+returned unformatted (ie not rounded or prefixed with '<'). Should be used
+in conjunction with the digits argument.}
 }
 \value{
 A character vector of the survival table source code, unless tableOnly=TRUE in

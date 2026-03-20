@@ -2,14 +2,17 @@
 % Please edit documentation in R/helper.R
 \name{hbld}
 \alias{hbld}
-\title{Bold strings in HTML}
+\title{Bold strings for HTML output}
 \usage{
 hbld(strings)
 }
 \arguments{
-\item{strings}{A vector of strings to bold.}
+\item{strings}{Vector of strings to bold}
+}
+\value{
+Vector of strings wrapped in HTML bold span
 }
 \description{
-Bold strings in HTML
+Wraps strings in HTML bold formatting using inline CSS.
 }
 \keyword{helper}

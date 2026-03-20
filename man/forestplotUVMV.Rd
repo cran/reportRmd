@@ -2,72 +2,18 @@
 % Please edit documentation in R/main.R
 \name{forestplotUVMV}
 \alias{forestplotUVMV}
-\title{Combine an univariable and multivariable forest plot using ggplot2}
+\title{Combine univariable and multivariable forest plot (DEPRECATED)}
 \usage{
-forestplotUVMV(
-  UVmodel,
-  MVmodel,
-  model = "glm",
-  family = NULL,
-  digits = getOption("reportRmd.digits", 2),
-  orderByRisk = TRUE,
-  colours = "default",
-  showEst = TRUE,
-  rmRef = FALSE,
-  logScale = FALSE,
-  nxTicks = 5,
-  showN = TRUE,
-  showEvent = TRUE
-)
+forestplotUVMV(UVmodel, MVmodel, ...)
 }
 \arguments{
 \item{UVmodel}{an UV model object output from the forestplotUV function}
 
 \item{MVmodel}{a MV model object output from the forestplotMV function}
 
-\item{model}{fitted model object}
-
-\item{family}{description of the error distribution and link function to be
-used in the model. Only used for geeglm}
-
-\item{digits}{number of digits to round to}
-
-\item{orderByRisk}{logical, should the plot be ordered by risk}
-
-\item{colours}{can specify colours for risks less than, 1 and greater than
-1.0. Default is red, black, green}
-
-\item{showEst}{logical, should the risks be displayed on the plot in text}
-
-\item{rmRef}{logical, should the reference levels be removed for the plot?}
-
-\item{logScale}{logical, should OR/RR be shown on log scale, defaults to
-TRUE. See https://doi.org/10.1093/aje/kwr156 for why you may prefer a
-linear scale.}
-
-\item{nxTicks}{Number of tick marks supplied to the log_breaks function to
-produce}
-
-\item{showN}{Show number of observations per variable and category}
-
-\item{showEvent}{Show number of events per variable and category}
-}
-\value{
-a plot object
+\item{...}{additional arguments (ignored)}
 }
 \description{
-This function will take log or logistic regression fit forest plot output
-from forestplotUV and forestplotMV functions and display the combined
-adjusted and unadjusted OR or RR for each variable on the appropriate
-log scale. Please note that total N and reference-level N is taken from
-unadjusted model.
+This function is deprecated. Please use forestplotMV() with
+include_unadjusted = TRUE instead.
 }
-\examples{
-data("pembrolizumab")
-UVp = forestplotUV(response="orr", covs=c("change_ctdna_group", "sex", "age",
-"l_size"), data=pembrolizumab, family='binomial')
-MVp = forestplotMV(glm(orr~change_ctdna_group+sex+age+l_size,
-data=pembrolizumab,family = 'binomial'))
-forestplotUVMV(UVp, MVp)
-}
-\keyword{plot}

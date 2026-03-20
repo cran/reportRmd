@@ -12,5 +12,13 @@ utils::globalVariables(c('surv','strata','lower','upper','n.censor','n.risk','x'
                          'event','flip.CIF','cut','eventlabs','event.name'
                          ,'Numbers_at_risk_text','HR.digits','HR.pval.digits',
                          'pval.digits','median.digits','set.time.digits',
-                         'print.n.missing'))
+                         'print.n.missing',
+                         # From forestplot functions and combine_uv_mv:
+                         'Est_CI', 'p-value', 'is_header', 'Covariate', 'var',
+                         'Variable', 'mv_order', 'x.val_plot', 'y.val', 'colour',
+                         'type', 'show_point', 'conf.low_plot', 'conf.high_plot',
+                         'ci_low_arrow', 'ci_high_arrow', 'variable', 'estimate',
+                         'max_est', 'var_order', 'level_order', 'censor.symbol',
+                         # From extract_package_details:
+                         'package_name', 'function_name', 'package_citation'))
 

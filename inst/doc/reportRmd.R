@@ -3,6 +3,7 @@ library(reportRmd)
 # knitr::opts_chunk$set(message = FALSE, warning = FALSE,dev="cairo_pdf")
 knitr::opts_chunk$set(message = FALSE, warning = FALSE)
 
+
 ## -----------------------------------------------------------------------------
 data("pembrolizumab")
 rm_covsum(data=pembrolizumab, 
@@ -82,6 +83,22 @@ summary_tab <- rm_compactsum(data=pembrolizumab, xvars=c('change_ctdna_group','o
 cat(attr(summary_tab, "description"))
 
 ## -----------------------------------------------------------------------------
+pembrolizumab |> rm_compactsum(xvars = c(age, pdl1, change_ctdna_group), grp = sex)
+
+## -----------------------------------------------------------------------------
+pembrolizumab |> rm_covsum(covs = c(age, pdl1, change_ctdna_group), maincov = sex)
+
+## -----------------------------------------------------------------------------
+pembrolizumab |> rm_covsum(xvars = c(age, pdl1, change_ctdna_group), grp = sex)
+
+## -----------------------------------------------------------------------------
+tab <- rm_covsum(data = pembrolizumab, maincov = cohort,
+                  covs = c(age, pdl1, sex), full = FALSE,
+                  pvalue = FALSE, tableOnly = TRUE)
+
+outTable(tab, header_above = c(" " = 1, "Cohorts A-C" = 3, "Cohorts D,E" = 2))
+
+## -----------------------------------------------------------------------------
 rm_uvsum(data=pembrolizumab, response='orr',
 covs=c('age','pdl1','change_ctdna_group'))
 
@@ -128,6 +145,27 @@ data("ctDNA")
  family=gaussian("identity"),
  data=ctDNA,showN=TRUE)
 
+## ----echo=T,eval=F------------------------------------------------------------
+# 
+# miss_data <- pembrolizumab
+# miss_data$age[sample(1:nrow(pembrolizumab),50,replace=F)] <- NA
+# miss_data$cohort[sample(1:nrow(pembrolizumab),50,replace=F)] <- NA
+# require(mice)
+# ini <- mice::mice(miss_data, maxit = 0)
+# pred_matrix <- ini$predictorMatrix
+# pred_matrix[1, ] <- 0
+# pred_matrix[, 1] <- 0
+# imp <- mice::mice(miss_data, m = 5, predictorMatrix = pred_matrix, printFlag = FALSE)
+# imputed_datasets <- purrr::map(1:5, \(m) mice::complete(imp, m))
+# 
+# fits <- lapply(imputed_datasets, function(dat) {
+#   glm(orr ~ age+cohort, data = dat,family='binomial')
+# })
+# model <- mice::as.mira(fits)
+# rm_mvsum(model)
+# 
+# 
+
 ## -----------------------------------------------------------------------------
  rm_uvsum(response = 'orr',
  covs=c('age'),
@@ -152,6 +190,18 @@ rm_mvsum(glm_fit, showN = TRUE, vif=TRUE)
 
 ## -----------------------------------------------------------------------------
 rm_mvsum(glm_fit, showN = TRUE, vif=TRUE,p.adjust = 'holm')
+
+## -----------------------------------------------------------------------------
+glm_fit <- glm(orr~change_ctdna_group+pdl1+age,
+               family='binomial',
+               data = pembrolizumab)
+rm_mvsum(glm_fit, data = pembrolizumab, include_unadjusted = TRUE, showN = TRUE, vif = TRUE)
+
+## -----------------------------------------------------------------------------
+require(survival)
+cox_fit <- coxph(Surv(os_time, os_status) ~ age + sex + baseline_ctdna,
+                 data = pembrolizumab)
+rm_mvsum(cox_fit, data = pembrolizumab, include_unadjusted = TRUE, tableOnly = TRUE)
 
 ## -----------------------------------------------------------------------------
 uvsumTable <- rm_uvsum(data=pembrolizumab, response='orr',
@@ -211,8 +261,19 @@ rm_survtime(data=pembrolizumab,time='os_time',status='os_status', covs='age',
  strata="sex",survtimes=c(12,24),survtimeunit='mo',type='PH')
 
 ## -----------------------------------------------------------------------------
-rm_survdiff(data=pembrolizumab,time='os_time',status='os_status', 
+rm_survdiff(data=pembrolizumab,time='os_time',status='os_status',
             covs='sex',strata='cohort',digits=1)
+
+## -----------------------------------------------------------------------------
+# Using pbc data from survival package as example
+data(pbc, package = "survival")
+# Create competing risk status: 0=censored, 1=transplant, 2=death
+pbc$status_cr <- ifelse(pbc$status == 0, 0, pbc$status)
+
+rm_cifsum(data=pbc, time='time', status='status_cr',
+          group='trt', eventcode=2, cencode=0,
+          eventtimes=c(1000, 2000, 3000),
+          eventtimeunit='days')
 
 ## -----------------------------------------------------------------------------
 rm_covsum(data=ctDNA,
@@ -306,6 +367,19 @@ ctDNA <- clear_labels(ctDNA)
 # ggsave('images/forestmv.png', scale = 0.5)
 
 ## ----eval=F,echo=T------------------------------------------------------------
+# glm_fit <- glm(orr~change_ctdna_group+pdl1+age,
+#                family='binomial',
+#                data = pembrolizumab)
+# forestplotMV(glm_fit, data = pembrolizumab, include_unadjusted = TRUE)
+
+## ----eval=F,echo=FALSE--------------------------------------------------------
+# glm_fit <- glm(orr~change_ctdna_group+pdl1+age,
+#                family='binomial',
+#                data = pembrolizumab)
+# forestplotMV(glm_fit, data = pembrolizumab, include_unadjusted = TRUE)
+# ggsave('images/forestmv_unadj.png', scale = 0.5)
+
+## ----eval=F,echo=T------------------------------------------------------------
 # UVp = forestplotUV(response="orr", covs=c("change_ctdna_group", "sex", "age",
 #  "l_size"), data=pembrolizumab, family='binomial')
 #  MVp = forestplotMV(glm(orr~change_ctdna_group+sex+age+l_size,
@@ -349,6 +423,14 @@ excelCol(G,AB,Az)
 
 ## -----------------------------------------------------------------------------
 excelColLetters(c(7,28,52))
+
+## ----echo=T,eval=F------------------------------------------------------------
+# extract_package_details() |>
+#   outTable()
+
+## ----echo=T,eval=F------------------------------------------------------------
+# extract_package_details(ignore_comments = FALSE) |>
+#   outTable()
 
 ## -----------------------------------------------------------------------------
  rm_uvsum(response = 'baseline_ctdna',

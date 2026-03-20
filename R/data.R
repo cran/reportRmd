@@ -42,16 +42,8 @@
 "ctDNA" 
 
 
-#'  Aligning models and parameters 
-#'
-#' @format A data frame with 16 rows and 5 variables:
-#' \describe{
-#'   \item{type}{model type}
-#'   \item{family}{model linking family}
-#'   \item{gee}{boolean indicating if gee are used}
-#'   \item{autoreg_class}{class of model fit}
-#'   \item{beta}{description of output parameter}
-#' }
-#' @source internal
-"uvmodels"
+# NOTE: uvmodels data object is deprecated and no longer used
+# Model type mapping is now handled by get_model_class() in model_registry.R
+# This provides better maintainability and eliminates the need for a separate data file
+# The uvmodels.rda file can be removed from data/ directory in a future release
 
