@@ -951,6 +951,7 @@ get_current_base_size <- function(default = 11) {
 #' @param ylim Y-axis limits
 #' @param xlim X-axis limits
 #' @param main Plot title
+#' @importFrom rlang .data
 create_base_plot <- function(
   df,
   type,
@@ -979,7 +980,7 @@ create_base_plot <- function(
     if (event == "linetype") {
       p <- ggplot2::ggplot(df) +
         ggplot2::geom_step(
-          ggplot2::aes(time, surv, colour = strata, linetype = event),
+          ggplot2::aes(.data$time, surv, colour = strata, linetype = event),
           linewidth = lsize
         )
       if (!is.null(legend.title)) {
@@ -988,7 +989,7 @@ create_base_plot <- function(
     } else if (event == "col") {
       p <- ggplot2::ggplot(df) +
         ggplot2::geom_step(
-          ggplot2::aes(time, surv, colour = event, linetype = strata),
+          ggplot2::aes(.data$time, surv, colour = event, linetype = strata),
           linewidth = lsize
         )
       if (!is.null(legend.title)) {
@@ -999,7 +1000,7 @@ create_base_plot <- function(
     p <- ggplot2::ggplot(df) +
       ggplot2::geom_step(
         ggplot2::aes(
-          time,
+          .data$time,
           surv,
           group = strata,
           linetype = linetype,
@@ -1038,7 +1039,6 @@ create_base_plot <- function(
         colour = "transparent",
         fill = "transparent"
       ),
-      legend.key.spacing.y = unit(-.25, "lines"),
       legend.margin = margin(0, 0, 0, 0),
       legend.box.margin = margin(0, 0, 0, 0),
       legend.background = ggplot2::element_blank()
@@ -1046,10 +1046,15 @@ create_base_plot <- function(
     ggplot2::scale_x_continuous(
       paste0("\n", xlab),
       breaks = times,
-      limits = c(0, maxxval)
+      # limits = c(0, maxxval)
     ) +
     ggplot2::coord_cartesian(xlim = c(0, maxxlim)) +
     ggplot2::scale_y_continuous(paste0(ylab, "\n"), limits = ylim)
+  # legend.key.spacing.y was introduced in ggplot2 3.5.0; setting it on an
+  # older version aborts the plot rather than being ignored
+  if (utils::packageVersion("ggplot2") >= "3.5.0") {
+    p <- p + ggplot2::theme(legend.key.spacing.y = unit(-.25, "lines"))
+  }
   if (is.null(legend.title)) {
     p <- p + ggplot2::theme(legend.title = element_blank())
   } else {
@@ -1072,12 +1077,22 @@ create_base_plot <- function(
   }
   # position the legend
   if (is.numeric(legend.pos)) {
-    p <- p +
-      ggplot2::theme(
-        legend.position = "inside",
-        legend.position.inside = legend.pos,
-        legend.justification.inside = legend.pos
-      )
+    # legend.position.inside was introduced in ggplot2 3.5.0; before that a
+    # numeric legend.position placed the legend inside the panel directly
+    if (utils::packageVersion("ggplot2") >= "3.5.0") {
+      p <- p +
+        ggplot2::theme(
+          legend.position = "inside",
+          legend.position.inside = legend.pos,
+          legend.justification.inside = legend.pos
+        )
+    } else {
+      p <- p +
+        ggplot2::theme(
+          legend.position = legend.pos,
+          legend.justification = legend.pos
+        )
+    }
   } else {
     p <- p + ggplot2::theme(legend.position = legend.pos)
   }
@@ -1090,6 +1105,7 @@ create_base_plot <- function(
 #' @param type Plot type
 #' @param event Event distinction method
 #' @param plot.event Events to plot
+#' @importFrom rlang .data
 add_confidence_bands <- function(p, df, type, event = "col", plot.event = 1) {
   conf_data <- df[!is.na(df$upper) & !is.na(df$lower), ]
   if (nrow(conf_data) == 0) {
@@ -1100,7 +1116,7 @@ add_confidence_bands <- function(p, df, type, event = "col", plot.event = 1) {
     p +
       ggplot2::geom_ribbon(
         data = conf_data,
-        ggplot2::aes(x = time, fill = strata, ymin = lower, ymax = upper),
+        ggplot2::aes(x = .data$time, fill = strata, ymin = lower, ymax = upper),
         inherit.aes = FALSE,
         alpha = 0.2,
         show.legend = FALSE
@@ -1113,7 +1129,12 @@ add_confidence_bands <- function(p, df, type, event = "col", plot.event = 1) {
           p <- p +
             ggplot2::geom_ribbon(
               data = event_data,
-              ggplot2::aes(x = time, fill = strata, ymin = lower, ymax = upper),
+              ggplot2::aes(
+                x = .data$time,
+                fill = strata,
+                ymin = lower,
+                ymax = upper
+              ),
               inherit.aes = FALSE,
               alpha = 0.2,
               show.legend = FALSE
@@ -1127,7 +1148,12 @@ add_confidence_bands <- function(p, df, type, event = "col", plot.event = 1) {
           p <- p +
             ggplot2::geom_ribbon(
               data = strata_data,
-              ggplot2::aes(x = time, fill = event, ymin = lower, ymax = upper),
+              ggplot2::aes(
+                x = .data$time,
+                fill = event,
+                ymin = lower,
+                ymax = upper
+              ),
               inherit.aes = FALSE,
               alpha = 0.2,
               show.legend = FALSE
@@ -1146,6 +1172,7 @@ add_confidence_bands <- function(p, df, type, event = "col", plot.event = 1) {
 #' @param censor.stroke Stroke of censor marks
 #' @param shape Shape for censor marks, defaults to "|", but can use an
 #'   character or standard geom_point shapes (0-24)
+#' @importFrom rlang .data
 add_censor_marks <- function(
   p,
   df,
@@ -1165,14 +1192,14 @@ add_censor_marks <- function(
   if (is.numeric(shape)) {
     if (!shape %in% 0:24) {
       message("censor.shape must be a number 0-24 or a character")
-      shape = 3
+      shape <- 3
     }
     if (missing(censor.size)) censor.size <- 2.5
   }
   p +
     ggplot2::geom_point(
       data = censor_data,
-      ggplot2::aes(x = time, y = surv, group = strata, col = strata),
+      ggplot2::aes(x = .data$time, y = surv, group = strata, col = strata),
       shape = shape,
       size = censor.size,
       stroke = censor.stroke,
@@ -1427,6 +1454,7 @@ add_median_lines <- function(p, median_vals, median.lsize = 1) {
 #' @param p ggplot object
 #' @param set.surv Data frame with survival at set times
 #' @param set.lsize Line size
+#' @importFrom rlang .data
 add_set_time_lines <- function(p, set.surv, set.lsize = 1) {
   if (is.null(set.surv)) {
     return(p)
@@ -1438,14 +1466,14 @@ add_set_time_lines <- function(p, set.surv, set.lsize = 1) {
   p <- p +
     ggplot2::geom_segment(
       data = set.surv,
-      ggplot2::aes(x = 0, xend = time, y = y, yend = y),
+      ggplot2::aes(x = 0, xend = .data$time, y = y, yend = y),
       lty = 2,
       lwd = set.lsize
     )
   p +
     ggplot2::geom_segment(
       data = set.surv,
-      ggplot2::aes(x = time, xend = time, y = 0, yend = y),
+      ggplot2::aes(x = .data$time, xend = .data$time, y = 0, yend = y),
       lty = 2,
       lwd = set.lsize
     )
@@ -1519,6 +1547,7 @@ apply_scales_and_guides <- function(
 #' @param col colours for strata
 #' @param fsize Font size
 #' @param nsize Number size in table
+#' @importFrom rlang .data
 create_risk_table <- function(
   sfit,
   times,
@@ -1559,7 +1588,7 @@ create_risk_table <- function(
 
   p <- ggplot2::ggplot(
     risk.data,
-    ggplot2::aes(x = time, y = strata, label = format(n.risk, nsmall = 0))
+    ggplot2::aes(x = .data$time, y = strata, label = format(n.risk, nsmall = 0))
   ) +
     ggplot2::labs(x = "", y = "") +
     ggplot2::geom_text(hjust = "middle", vjust = "center", size = nsize) +
@@ -1724,6 +1753,10 @@ ggkmcif2 <- function(
       "CIF"
     }
   }
+  # Accept km/cif in any case rather than erroring on a valid-looking value
+  if (!is.null(type) && length(type) == 1 && is.character(type)) {
+    type <- toupper(trimws(type))
+  }
   # Check & set legend position
   if (!("legend.pos" %in% names(mainArgs))) {
     if (type == "KM") legend.pos <- c(0, 0) else legend.pos <- c(0, 1)
@@ -1797,7 +1830,7 @@ ggkmcif2 <- function(
     } else {
       2
     }
-    col <- color_palette_surv_ggplot(col_length)
+    col <- colour_palette_surv_ggplot(col_length)
   }
 
   # Initialize common variables
@@ -2101,7 +2134,7 @@ ggkmcif2 <- function(
     p_risk_lines <- length(unique(stratalabs)) + 2
     p2_risk_height <- line_size_in_inches * p_risk_lines
     p1_height <- dev_height_inches - p2_risk_height
-    rel_height = c(1, (dev_height_inches - p1_height) / p1_height)
+    rel_height <- c(1, (dev_height_inches - p1_height) / p1_height)
 
     p_combined <- cowplot::plot_grid(
       p,
@@ -2281,24 +2314,11 @@ ggkmcif2Parameters <- function(
 
 # Additional Required Functions
 
-#' Function to extract ggplot colours
-#' @noRd
-.extract_ggplot_colours <- function(p, grp.levels) {
-  # Extract colours from ggplot object
-  g <- ggplot_build(p)
-  colours <- unique(g$data[[1]]$colour)
-  if (length(colours) < length(grp.levels)) {
-    colours <- rep(colours, length.out = length(grp.levels))
-  }
-  colours[1:length(grp.levels)]
-}
-
-#' Function to set large dash as y-axis text
-#' @noRd
-.set_large_dash_as_ytext <- function(plot) {
-  # Handle large dash formatting for y-axis text
-  plot + ggplot2::theme(axis.text.y = ggplot2::element_text(family = "mono"))
-}
+# Note: .extract_ggplot_colours() and .set_large_dash_as_ytext() are defined
+# once in helper.R and reused here. Previous duplicate definitions in this file
+# diverged from those (the .set_large_dash_as_ytext copy used family = "mono"
+# rather than enlarging the dash), so their effect depended on file load order.
+# They have been removed to keep a single, unambiguous definition.
 
 calculate_text_height_base <- function(
   text = "Ag",
